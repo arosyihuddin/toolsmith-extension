@@ -94,9 +94,24 @@ async function discover() {
   return discoveryCache;
 }
 
+
+async function oauthForCurrentServer() {
+  const oauth = await getOAuth();
+  if (!oauth) return null;
+  const { serverUrl } = await getSettings();
+  if (!serverUrl) return null;
+  return oauth.serverOrigin === new URL(serverUrl).origin ? oauth : null;
+}
+
 async function registerClient(discovery, redirectUri) {
+  const origin = new URL(discovery.issuer).origin;
   const existing = await getOAuth();
-  if (existing && existing.clientId && existing.redirectUri === redirectUri) {
+  if (
+    existing &&
+    existing.clientId &&
+    existing.redirectUri === redirectUri &&
+    existing.serverOrigin === origin
+  ) {
     return existing.clientId;
   }
   const response = await fetch(discovery.registration_endpoint, {
@@ -115,7 +130,7 @@ async function registerClient(discovery, redirectUri) {
     throw new Error(`Registrasi klien OAuth gagal (HTTP ${response.status})`);
   }
   const data = await response.json();
-  await setOAuth({ clientId: data.client_id, redirectUri });
+  await setOAuth({ clientId: data.client_id, redirectUri, serverOrigin: origin });
   return data.client_id;
 }
 
@@ -211,7 +226,7 @@ async function refreshOAuth(oauth) {
 async function resolveMode() {
   const { authMethod } = await getSettings();
   if (authMethod === "oauth" || authMethod === "bearer") return authMethod;
-  const oauth = await getOAuth();
+  const oauth = await oauthForCurrentServer();
   if (oauth && oauth.accessToken) return "oauth";
   const { token } = await getSettings();
   return token ? "bearer" : null;
@@ -223,7 +238,7 @@ async function resolveMode() {
 async function currentBearer() {
   const mode = await resolveMode();
   if (mode === "oauth") {
-    const oauth = await getOAuth();
+    const oauth = await oauthForCurrentServer();
     if (!oauth || !oauth.accessToken) return "";
     if (oauth.expiresAt && Date.now() < oauth.expiresAt - 60_000) {
       return oauth.accessToken;
@@ -246,7 +261,7 @@ async function currentBearer() {
 async function disconnect() {
   const mode = await resolveMode();
   if (mode === "oauth") {
-    const oauth = await getOAuth();
+    const oauth = await oauthForCurrentServer();
     if (oauth && (oauth.accessToken || oauth.refreshToken)) {
       try {
         const discovery = await discover();

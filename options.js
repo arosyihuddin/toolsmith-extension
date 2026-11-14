@@ -73,6 +73,48 @@ const READ_ONLY_TOOLS = new Set([
   "ast_grep", "tunnel_list", "tunnel_status", "wait",
 ]);
 
+const PERM_VALUES = [
+  ["auto", "Otomatis"],
+  ["ask", "Tanya"],
+  ["deny", "Tolak"],
+];
+// One level only: each tool carries its own permission. Without
+// an explicit choice the built-in default applies - read tools
+// Otomatis, write tools Tanya.
+const DEFAULT_PERMISSIONS = { tools: {} };
+
+async function loadPermissions() {
+  const stored = await chrome.storage.local.get({
+    toolPermissions: DEFAULT_PERMISSIONS,
+  });
+  return JSON.parse(
+    JSON.stringify(stored.toolPermissions || DEFAULT_PERMISSIONS),
+  );
+}
+
+async function savePermissions(perms) {
+  await chrome.storage.local.set({ toolPermissions: perms });
+}
+
+function effectivePermission(perms, name) {
+  if (perms.tools && perms.tools[name]) return perms.tools[name];
+  return READ_ONLY_TOOLS.has(name) ? "auto" : "ask";
+}
+
+function segControl(current, onPick, small) {
+  const wrap = document.createElement("div");
+  wrap.className = "seg" + (small ? " small" : "");
+  for (const [value, label] of PERM_VALUES) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = label;
+    if (current === value) btn.className = "active";
+    btn.addEventListener("click", () => onPick(value));
+    wrap.appendChild(btn);
+  }
+  return wrap;
+}
+
 async function renderTools() {
   const listEl = document.getElementById("toolList");
   listEl.innerHTML = "";
@@ -81,26 +123,49 @@ async function renderTools() {
     listEl.textContent = "Gagal memuat tool: " + listed.error;
     return;
   }
+  const perms = await loadPermissions();
   const groups = [
-    { title: "Hanya baca — jalan otomatis", tools: listed.tools.filter((t) => READ_ONLY_TOOLS.has(t.name)) },
-    { title: "Bisa mengubah — minta persetujuan dulu", tools: listed.tools.filter((t) => !READ_ONLY_TOOLS.has(t.name)) },
+    {
+      key: "read",
+      title: "Read tools",
+      tools: listed.tools.filter((t) => READ_ONLY_TOOLS.has(t.name)),
+    },
+    {
+      key: "write",
+      title: "Write tools",
+      tools: listed.tools.filter((t) => !READ_ONLY_TOOLS.has(t.name)),
+    },
   ];
   for (const group of groups) {
     if (!group.tools.length) continue;
-    const heading = document.createElement("div");
-    heading.className = "tgroup";
-    heading.textContent = group.title;
-    listEl.appendChild(heading);
+    const head = document.createElement("div");
+    head.className = "tgroup";
+    head.textContent = group.title;
+    listEl.appendChild(head);
     for (const tool of group.tools) {
       const row = document.createElement("div");
       row.className = "tool";
+      const main = document.createElement("div");
+      main.className = "tmain";
       const name = document.createElement("div");
       name.className = "tname";
       name.textContent = tool.name;
       const desc = document.createElement("div");
       desc.className = "tdesc";
       desc.textContent = (tool.description || "").split("\n")[0].slice(0, 110);
-      row.append(name, desc);
+      main.append(name, desc);
+      row.append(
+        main,
+        segControl(
+          effectivePermission(perms, tool.name),
+          async (value) => {
+            (perms.tools ||= {})[tool.name] = value;
+            await savePermissions(perms);
+            renderTools();
+          },
+          true,
+        ),
+      );
       listEl.appendChild(row);
     }
   }
@@ -181,3 +246,130 @@ document.getElementById("disconnect").addEventListener("click", async () => {
   if (status.state === "connected") await showConnected(status);
   else await showSetup();
 })();
+
+
+// Settings tabs: Koneksi (setup/connected states) and Chat Aktif.
+const tabBtnConnection = document.getElementById("tabBtnConnection");
+const tabBtnChats = document.getElementById("tabBtnChats");
+const tabConnection = document.getElementById("tabConnection");
+const tabChats = document.getElementById("tabChats");
+
+function showTab(which) {
+  const chats = which === "chats";
+  tabConnection.hidden = chats;
+  tabChats.hidden = !chats;
+  tabBtnConnection.classList.toggle("active", !chats);
+  tabBtnChats.classList.toggle("active", chats);
+}
+
+tabBtnConnection.addEventListener("click", () => showTab("connection"));
+tabBtnChats.addEventListener("click", () => showTab("chats"));
+
+// Armed conversations (stored by the content script): list them,
+// open them, or forget them - forgetting also disarms a chat that
+// is currently open, via the storage change listener there.
+const armedListEl = document.getElementById("armedList");
+const armedEmptyEl = document.getElementById("armedEmpty");
+
+async function renderArmedChats() {
+  const data = await chrome.storage.local.get("armedChats");
+  const entries = Object.entries(data.armedChats || {}).sort(
+    (a, b) => (b[1].armedAt || 0) - (a[1].armedAt || 0),
+  );
+  armedListEl.innerHTML = "";
+  armedEmptyEl.hidden = entries.length > 0;
+  const badge = document.getElementById("armedCount");
+  badge.hidden = entries.length === 0;
+  badge.textContent = String(entries.length);
+  for (const [path, rec] of entries) {
+    const li = document.createElement("li");
+    li.className = "armed-item";
+    const main = document.createElement("div");
+    main.className = "armed-main";
+    const title = document.createElement("div");
+    title.className = "armed-title";
+    title.textContent = path.split("/").filter(Boolean).pop() || path;
+    title.title = path;
+    const sub = document.createElement("div");
+    sub.className = "armed-sub";
+    let host = rec.serverUrl || "";
+    try { host = new URL(rec.serverUrl).host; } catch {}
+    const when = rec.armedAt
+      ? new Date(rec.armedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
+      : "";
+    sub.textContent = [host, when].filter(Boolean).join(" · ");
+    main.append(title, sub);
+    const openBtn = document.createElement("button");
+    openBtn.className = "icon-btn";
+    openBtn.textContent = "↗";
+    openBtn.title = "Buka chat";
+    openBtn.addEventListener("click", () =>
+      chrome.tabs.create({ url: "https://gemini.google.com" + path }),
+    );
+    const delBtn = document.createElement("button");
+    delBtn.className = "icon-btn";
+    delBtn.textContent = "×";
+    delBtn.title = "Hapus - Toolsmith mati untuk chat ini";
+    delBtn.addEventListener("click", async () => {
+      const fresh = await chrome.storage.local.get("armedChats");
+      const map = fresh.armedChats || {};
+      delete map[path];
+      await chrome.storage.local.set({ armedChats: map });
+      renderArmedChats();
+    });
+    const approved = rec.approvedTools || [];
+    if (approved.length) {
+      const toolsDiv = document.createElement("div");
+      toolsDiv.className = "armed-tools";
+      const label = document.createElement("span");
+      label.className = "armed-tools-label";
+      label.textContent = "Disetujui sesi ini:";
+      toolsDiv.appendChild(label);
+      const updateRecord = async (fn) => {
+        const fresh = await chrome.storage.local.get("armedChats");
+        const map = fresh.armedChats || {};
+        if (map[path]) {
+          fn(map[path]);
+          await chrome.storage.local.set({ armedChats: map });
+        }
+        renderArmedChats();
+      };
+      for (const name of approved) {
+        const chip = document.createElement("span");
+        chip.className = "tool-chip";
+        const nm = document.createElement("span");
+        nm.textContent = name;
+        const x = document.createElement("button");
+        x.type = "button";
+        x.textContent = "×";
+        x.title = "Cabut persetujuan sesi untuk " + name;
+        x.addEventListener("click", () =>
+          updateRecord((r) => {
+            r.approvedTools = (r.approvedTools || []).filter(
+              (t) => t !== name,
+            );
+          }),
+        );
+        chip.append(nm, x);
+        toolsDiv.appendChild(chip);
+      }
+      if (approved.length > 1) {
+        const reset = document.createElement("button");
+        reset.type = "button";
+        reset.className = "armed-reset";
+        reset.textContent = "Reset semua";
+        reset.addEventListener("click", () =>
+          updateRecord((r) => {
+            r.approvedTools = [];
+          }),
+        );
+        toolsDiv.appendChild(reset);
+      }
+      main.appendChild(toolsDiv);
+    }
+    li.append(main, openBtn, delBtn);
+    armedListEl.appendChild(li);
+  }
+}
+
+renderArmedChats();

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Toolsmith",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Connect web AI chats (Gemini) to your own machine through the Toolsmith MCP server.",
   "permissions": [
     "storage",

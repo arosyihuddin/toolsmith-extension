@@ -33,6 +33,7 @@ const state = {
   lastProcessedText: "",
   injecting: false,
   button: null,
+  baselinePending: false,
 };
 
 // ----------------------------------------------------------------
@@ -134,6 +135,72 @@ async function injectUserMessage(text) {
     // the response watcher treats anything as user input.
     setTimeout(() => (state.injecting = false), 1500);
   }
+}
+
+// ----------------------------------------------------------------
+// Per-message mode anchor. As a conversation grows, Gemini drifts
+// out of Toolsmith mode and starts claiming it is inactive - so
+// while armed, every outgoing user message gets a short
+// [TOOLSMITH MODE] reminder appended just before it is sent, and
+// tool results carry the tag too.
+
+const MODE_TAG = "[TOOLSMITH MODE]";
+const MODE_REMINDER =
+  "\n\n" + MODE_TAG + ' Mode Toolsmith AKTIF di sesi ini. Jika perlu memakai tool, balas HANYA dengan blok ```tool_call {"name": "...", "arguments": {...}} ``` (satu panggilan per balasan), lalu tunggu hasilnya. Jangan pernah menyatakan mode ini tidak aktif.';
+
+function appendToEditor(suffix) {
+  const editor = findEditor();
+  if (!editor) return false;
+  editor.focus();
+  const selection = window.getSelection();
+  if (selection) {
+    selection.selectAllChildren(editor);
+    selection.collapseToEnd();
+  }
+  const ok = document.execCommand("insertText", false, suffix);
+  if (!ok || !editor.innerText.includes(MODE_TAG)) {
+    editor.textContent = (editor.innerText || "") + suffix;
+    editor.dispatchEvent(
+      new InputEvent("input", { bubbles: true, inputType: "insertText", data: suffix }),
+    );
+  }
+  return true;
+}
+
+function maybeAppendReminder() {
+  if (!state.armed || state.injecting) return;
+  const editor = findEditor();
+  if (!editor) return;
+  const text = (editor.innerText || "").trim();
+  if (!text || text.includes(MODE_TAG)) return;
+  appendToEditor(MODE_REMINDER);
+}
+
+// Capture phase, so the reminder lands in the composer before
+// Gemini's own send handler reads it. Our own injections are
+// excluded via state.injecting.
+function watchOutgoingMessages() {
+  document.addEventListener(
+    "click",
+    (event) => {
+      const button = findSendButton();
+      if (button && (event.target === button || button.contains(event.target))) {
+        maybeAppendReminder();
+      }
+    },
+    true,
+  );
+  document.addEventListener(
+    "keydown",
+    (event) => {
+      if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+      const editor = findEditor();
+      if (editor && (event.target === editor || editor.contains(event.target))) {
+        maybeAppendReminder();
+      }
+    },
+    true,
+  );
 }
 
 function sleep(ms) {
@@ -257,6 +324,7 @@ function askApproval(call) {
       <pre class="toolsmith-approval-args"></pre>
       <div class="toolsmith-approval-actions">
         <button class="toolsmith-deny">Tolak</button>
+        <button class="toolsmith-session">Setujui sesi ini</button>
         <button class="toolsmith-approve">Jalankan</button>
       </div>`;
     card.querySelector(".toolsmith-approval-tool").textContent = call.name;
@@ -265,21 +333,41 @@ function askApproval(call) {
     );
     card.querySelector(".toolsmith-approve").addEventListener("click", () => {
       card.remove();
-      resolve(true);
+      resolve("once");
+    });
+    card.querySelector(".toolsmith-session").addEventListener("click", () => {
+      card.remove();
+      resolve("session");
     });
     card.querySelector(".toolsmith-deny").addEventListener("click", () => {
       card.remove();
-      resolve(false);
+      resolve("deny");
     });
     document.body.appendChild(card);
   });
 }
 
 async function executeToolCall(call) {
-  if (!READ_ONLY_TOOLS.has(call.name)) {
-    const approved = await askApproval(call);
-    if (!approved) {
-      return { text: "Ditolak oleh pengguna.", isError: true };
+  const perms = await loadPermissions();
+  const permission = effectivePermission(perms, call.name);
+  if (permission === "deny") {
+    return {
+      text: `Tool ${call.name} ditolak oleh pengaturan izin ekstensi.`,
+      isError: true,
+    };
+  }
+  if (permission === "ask") {
+    const record = await readArmRecord();
+    const sessionApproved =
+      record && (record.approvedTools || []).includes(call.name);
+    if (!sessionApproved) {
+      const decision = await askApproval(call);
+      if (decision === "deny") {
+        return { text: "Ditolak oleh pengguna.", isError: true };
+      }
+      if (decision === "session") {
+        await rememberToolApproval(call.name);
+      }
     }
   }
   const response = await bgMessage({
@@ -323,7 +411,7 @@ async function handleModelResponse(text, el) {
       header = `[TOOL RESULT ${call.name}${result.isError ? " - error" : ""}]`;
       body = result.text;
     }
-    await injectUserMessage(`${header}\n${body}\n\nLanjutkan.`);
+    await injectUserMessage(`${header}\n${body}\n\nLanjutkan. ${MODE_TAG} masih aktif: jika perlu tool lagi, balas hanya dengan blok tool_call berikutnya; jika tugas selesai, jawab normal.`);
   } finally {
     state.busy = false;
     if (state.armed) setButton("on", "Toolsmith: On");
@@ -339,6 +427,11 @@ function watchResponses() {
     if (isGenerating()) return;
     const text = lastModelResponseText();
     if (!text || text === state.lastProcessedText) return;
+    if (state.baselinePending) {
+      state.lastProcessedText = text;
+      state.baselinePending = false;
+      return;
+    }
     // Give streaming a beat to fully settle.
     await sleep(600);
     if (isGenerating()) return;
@@ -366,6 +459,107 @@ function watchUserMessages() {
 }
 
 // ----------------------------------------------------------------
+// Per-conversation arm persistence
+//
+// Gemini keeps the conversation - including the setup prompt - on
+// its side, so reloading the page must restore the armed state for
+// THIS conversation without sending the setup prompt again. The
+// flag lives in chrome.storage.local keyed by conversation path
+// and records the server the conversation was armed against.
+
+const ARM_STORE_KEY = "armedChats";
+
+function conversationKey() {
+  return location.pathname;
+}
+
+async function readArmRecord() {
+  const data = await chrome.storage.local.get(ARM_STORE_KEY);
+  return (data[ARM_STORE_KEY] || {})[conversationKey()] || null;
+}
+
+async function writeArmRecord(record) {
+  const data = await chrome.storage.local.get(ARM_STORE_KEY);
+  const all = data[ARM_STORE_KEY] || {};
+  if (record) all[conversationKey()] = record;
+  else delete all[conversationKey()];
+  // Keep the store bounded: only the 300 most recently armed chats.
+  const entries = Object.entries(all).sort(
+    (a, b) => (b[1].armedAt || 0) - (a[1].armedAt || 0),
+  );
+  await chrome.storage.local.set({
+    [ARM_STORE_KEY]: Object.fromEntries(entries.slice(0, 300)),
+  });
+}
+
+
+// Tool permissions (set in the options page): every tool resolves
+// to "auto", "ask" or "deny" - its own stored permission, else
+// the built-in default (read tools "auto", write tools "ask").
+// "deny" tools are
+// also left out of the setup prompt entirely.
+const DEFAULT_PERMISSIONS = { tools: {} };
+
+async function loadPermissions() {
+  const stored = await chrome.storage.local.get({
+    toolPermissions: DEFAULT_PERMISSIONS,
+  });
+  return stored.toolPermissions || DEFAULT_PERMISSIONS;
+}
+
+function effectivePermission(perms, name) {
+  if (perms.tools && perms.tools[name]) return perms.tools[name];
+  return READ_ONLY_TOOLS.has(name) ? "auto" : "ask";
+}
+
+async function rememberToolApproval(name) {
+  const record = await readArmRecord();
+  if (!record) return;
+  const approved = new Set(record.approvedTools || []);
+  approved.add(name);
+  await writeArmRecord({ ...record, approvedTools: [...approved] });
+}
+
+async function restoreArmedState() {
+  const record = await readArmRecord();
+  if (!record) return;
+  const status = await bgMessage({ type: "toolsmith:status" });
+  if (!status.ok || !status.serverUrl || status.serverUrl !== record.serverUrl) return;
+  state.armed = true;
+  state.autoRounds = 0;
+  // Responses already on screen predate the restore; the watcher
+  // takes the first one it sees as a baseline and never executes it.
+  state.baselinePending = true;
+  setButton("on", "Toolsmith: On");
+}
+
+// Deleting the record elsewhere (e.g. from the popup list) disarms
+// this chat live, without waiting for a reload.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (!changes[ARM_STORE_KEY]) return;
+  const mine = (changes[ARM_STORE_KEY].newValue || {})[conversationKey()];
+  if (!mine && state.armed) {
+    state.armed = false;
+    setButton("off", "Toolsmith: Off");
+  }
+});
+
+function watchNavigation() {
+  let lastPath = location.pathname;
+  setInterval(async () => {
+    if (location.pathname === lastPath) return;
+    lastPath = location.pathname;
+    state.armed = false;
+    state.autoRounds = 0;
+    state.lastProcessedText = "";
+    state.baselinePending = false;
+    setButton("off", "Toolsmith: Off");
+    await restoreArmedState();
+  }, 1000);
+}
+
+// ----------------------------------------------------------------
 // Toggle button
 
 function setButton(mode, label) {
@@ -378,6 +572,7 @@ async function toggleToolsmith() {
   if (state.armed) {
     state.armed = false;
     setButton("off", "Toolsmith: Off");
+    await writeArmRecord(null);
     return;
   }
   setButton("arming", "Toolsmith: menghubungkan...");
@@ -388,7 +583,11 @@ async function toggleToolsmith() {
     return;
   }
   try {
-    await injectUserMessage(buildSetupPrompt(listed.tools));
+    const perms = await loadPermissions();
+    const offered = listed.tools.filter(
+      (tool) => effectivePermission(perms, tool.name) !== "deny",
+    );
+    await injectUserMessage(`${MODE_TAG}\n\n${buildSetupPrompt(offered)}`);
   } catch (err) {
     setButton("off", "Toolsmith: gagal");
     alert(`Toolsmith: tidak menemukan kotak pesan Gemini.\n${err.message}`);
@@ -398,6 +597,10 @@ async function toggleToolsmith() {
   state.autoRounds = 0;
   state.lastProcessedText = "";
   setButton("on", "Toolsmith: On");
+  const status = await bgMessage({ type: "toolsmith:status" });
+  if (status.ok && status.serverUrl) {
+    await writeArmRecord({ serverUrl: status.serverUrl, armedAt: Date.now() });
+  }
 }
 
 function createToggleButton() {
@@ -444,8 +647,10 @@ function boot() {
   mountButton();
   setInterval(mountButton, 2000); // Gemini re-renders; re-mount if lost.
   watchResponses();
+  watchOutgoingMessages();
   watchUserMessages();
   watchNavigation();
+  restoreArmedState();
 }
 
 if (document.readyState === "loading") {

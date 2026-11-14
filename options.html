@@ -76,6 +76,31 @@
   .tool .tname { font-family: ui-monospace, monospace; font-size: 13px; }
   .tool .tdesc { color: var(--subtle); font-size: 12px; }
   #result { color: var(--subtle); font-size: 13px; white-space: pre-wrap; margin-top: 6px; }
+  .armed-list { list-style: none; margin: 0; padding: 0; }
+  .armed-item { display: flex; align-items: center; gap: 6px; padding: 6px 0; border-top: 1px solid var(--line); }
+  .armed-item:first-child { border-top: none; }
+  .armed-main { flex: 1; min-width: 0; }
+  .armed-title { font-family: ui-monospace, monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .armed-sub { color: var(--subtle); font-size: 11px; }
+  .icon-btn { padding: 2px 8px; font-size: 13px; background: transparent; border: 1px solid var(--line); border-radius: 6px; color: var(--muted); flex: none; cursor: pointer; }
+  .icon-btn:hover { background: var(--hover); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tab { background: transparent; border: none; border-bottom: 2px solid transparent; padding: 8px 12px; font: 500 13px system-ui, sans-serif; color: var(--subtle); cursor: pointer; margin-bottom: -1px; }
+  .tab:hover { color: var(--fg); }
+  .tab.active { color: var(--fg); border-bottom-color: var(--accent); }
+  .badge { background: var(--accent); color: #fff; border-radius: 999px; font-size: 11px; padding: 0 6px; margin-left: 4px; }
+  .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; }
+  .seg button { font: 500 12px system-ui, sans-serif; padding: 5px 10px; background: transparent; border: none; color: var(--subtle); cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.active { background: var(--accent); color: #fff; }
+  .seg.small button { padding: 3px 8px; font-size: 11px; }
+  .tool { display: flex; align-items: center; gap: 8px; }
+  .tool .tmain { flex: 1; min-width: 0; }
+  .armed-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 4px; }
+  .armed-tools-label { font-size: 11px; color: var(--subtle); }
+  .tool-chip { display: inline-flex; align-items: center; gap: 2px; font: 500 11px ui-monospace, monospace; border: 1px solid var(--line-strong); border-radius: 999px; padding: 0 2px 0 8px; }
+  .tool-chip button { background: none; border: none; color: var(--subtle); cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 4px; }
+  .armed-reset { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 11px; padding: 2px 4px; }
 </style>
 </head>
 <body>
@@ -83,6 +108,13 @@
   <img src="logo.svg" alt="">
   <h1>Toolsmith - Pengaturan</h1>
 </header>
+
+<nav class="tabs">
+  <button class="tab active" id="tabBtnConnection" type="button">Koneksi</button>
+  <button class="tab" id="tabBtnChats" type="button">Chat Aktif<span class="badge" id="armedCount" hidden></span></button>
+</nav>
+<div id="tabConnection">
+
 
 <section id="setupCard">
   <h2>Koneksi</h2>
@@ -123,7 +155,7 @@
   <div class="meta" id="connMeta"></div>
 
   <h3>Tools dari server ini</h3>
-  <div class="meta">Matikan tool yang tidak boleh ditawarkan ke model. Berlaku mulai sesi Gemini berikutnya.</div>
+  <div class="meta">Dikelompokkan menurut cara persetujuannya.</div>
   <div id="toolList"></div>
 
   <div class="row">
@@ -131,6 +163,18 @@
     <button class="ghost" id="disconnect">Putuskan</button>
   </div>
 </section>
+
+
+
+</div>
+<div id="tabChats" hidden>
+<section id="armedCard">
+  <h2>Chat dengan Toolsmith aktif</h2>
+  <ul class="armed-list" id="armedList"></ul>
+  <div class="meta" id="armedEmpty">Belum ada chat yang dinyalakan.</div>
+</section>
+
+</div>
 
 <div id="result"></div>
 

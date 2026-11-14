@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<title>Toolsmith - Pengaturan</title>
+<style>
+  :root {
+    --canvas: #FAFAFA; --surface: #FFFFFF; --raised: #FFFFFF;
+    --hover: #F5F5F5; --line: #E5E5E5; --line-strong: #D4D4D4;
+    --fg: #0A0A0A; --muted: #404040; --subtle: #737373; --faint: #A3A3A3;
+    --accent: #5E6AD2; --accent-hover: #4F5BC4; --accent-fg: #FFFFFF;
+    --success: #2D9D6B; --warning: #C58B0C; --danger: #D93F3F;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --canvas: #0A0A0A; --surface: #0A0A0A; --raised: #171717;
+      --hover: #262626; --line: #262626; --line-strong: #404040;
+      --fg: #FAFAFA; --muted: #D4D4D4; --subtle: #A3A3A3; --faint: #737373;
+      --accent: #7C86E8; --accent-hover: #5E6AD2; --accent-fg: #FFFFFF;
+      --success: #4CB782; --warning: #F2C94C; --danger: #EB5757;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    font: 14px/1.5 system-ui, sans-serif; max-width: 600px;
+    margin: 0 auto; padding: 24px 16px 40px;
+    background: var(--canvas); color: var(--fg);
+  }
+  header { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  header img { width: 32px; height: 32px; border-radius: 8px; }
+  header h1 { font-size: 17px; margin: 0; }
+  section {
+    background: var(--raised); border: 1px solid var(--line);
+    border-radius: 10px; padding: 16px; margin-bottom: 14px;
+  }
+  section h2 { font-size: 13px; margin: 0 0 10px 0; text-transform: uppercase;
+               letter-spacing: 0.04em; color: var(--muted); }
+  section h3 { font-size: 13px; margin: 16px 0 4px 0; color: var(--muted); }
+  label.field { display: block; font-weight: 600; font-size: 13px; margin-top: 10px; }
+  input[type="url"], input[type="password"] {
+    width: 100%; padding: 8px 10px; margin-top: 5px; font: inherit;
+    background: var(--surface); color: var(--fg);
+    border: 1px solid var(--line-strong); border-radius: 8px;
+  }
+  .method {
+    display: flex; gap: 9px; align-items: flex-start; padding: 10px;
+    border: 1px solid var(--line); border-radius: 8px; margin-top: 8px;
+    cursor: pointer; font-weight: 600; font-size: 13px;
+  }
+  .method:hover { background: var(--hover); }
+  .method input { margin-top: 2px; accent-color: var(--accent); }
+  .method .hint { display: block; font-weight: 400; color: var(--subtle); }
+  .row { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+  button {
+    font: 500 13px system-ui, sans-serif; padding: 7px 14px; border-radius: 8px;
+    cursor: pointer; border: 1px solid transparent;
+  }
+  button.primary { background: var(--accent); color: var(--accent-fg); }
+  button.primary:hover { background: var(--accent-hover); }
+  button.ghost { background: transparent; border-color: var(--line-strong); color: var(--fg); }
+  button.ghost:hover { background: var(--hover); }
+  button:disabled { opacity: 0.55; cursor: default; }
+  .status-row { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); flex: none; }
+  .meta { color: var(--subtle); font-size: 13px; margin-top: 4px; }
+  .mono { font-family: ui-monospace, monospace; word-break: break-all; }
+  .tool {
+    padding: 8px 2px;
+    border-top: 1px solid var(--line);
+  }
+  .tgroup {
+    margin: 16px 0 2px; font-size: 11px; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--subtle);
+  }
+  .tool .tname { font-family: ui-monospace, monospace; font-size: 13px; }
+  .tool .tdesc { color: var(--subtle); font-size: 12px; }
+  #result { color: var(--subtle); font-size: 13px; white-space: pre-wrap; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <img src="logo.svg" alt="">
+  <h1>Toolsmith - Pengaturan</h1>
+</header>
+
+<section id="setupCard">
+  <h2>Koneksi</h2>
+  <label class="field">URL MCP Server
+    <input id="serverUrl" type="url" placeholder="https://example.com/mcp">
+  </label>
+
+  <label class="method">
+    <input type="radio" name="authMethod" value="oauth">
+    <span>OAuth
+      <span class="hint">Login lewat halaman resmi server. Tanpa menempel token; token akses diperbarui otomatis.</span>
+    </span>
+  </label>
+  <label class="method">
+    <input type="radio" name="authMethod" value="bearer">
+    <span>Bearer token
+      <span class="hint">Tempel token API server secara manual.</span>
+    </span>
+  </label>
+
+  <div id="bearerBox" hidden>
+    <label class="field">Token (Bearer)
+      <input id="token" type="password" autocomplete="off">
+    </label>
+  </div>
+
+  <div class="row">
+    <button class="primary" id="save">Simpan</button>
+    <button class="primary" id="connect" hidden>Connect dengan OAuth</button>
+    <span id="saveState" class="meta"></span>
+  </div>
+</section>
+
+<section id="connectedCard" hidden>
+  <h2>Terhubung</h2>
+  <div class="status-row"><span class="dot"></span><span id="connState">Terhubung</span></div>
+  <div class="meta mono" id="connUrl"></div>
+  <div class="meta" id="connMeta"></div>
+
+  <h3>Tools dari server ini</h3>
+  <div class="meta">Matikan tool yang tidak boleh ditawarkan ke model. Berlaku mulai sesi Gemini berikutnya.</div>
+  <div id="toolList"></div>
+
+  <div class="row">
+    <button class="ghost" id="edit">Ubah koneksi</button>
+    <button class="ghost" id="disconnect">Putuskan</button>
+  </div>
+</section>
+
+<div id="result"></div>
+
+<script src="options.js"></script>
+</body>
+</html>

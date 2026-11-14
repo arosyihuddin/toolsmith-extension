@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Toolsmith",
-  "version": "0.2.1",
-  "description": "Connect web AI chats (Gemini) to your own machine through the Toolsmith MCP server.",
+  "version": "0.3.0",
+  "description": "Connect web AI chats (Gemini, Meta AI, Ptero) to your own machine through the Toolsmith MCP server.",
   "permissions": [
     "storage",
     "identity"
@@ -25,6 +25,32 @@
     {
       "matches": [
         "https://gemini.google.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.meta.ai/*",
+        "https://meta.ai/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "css": [
+        "content.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://ptero.pro/*",
+        "https://www.ptero.pro/*"
       ],
       "js": [
         "content.js"

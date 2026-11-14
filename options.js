@@ -273,7 +273,9 @@ const armedEmptyEl = document.getElementById("armedEmpty");
 
 async function renderArmedChats() {
   const data = await chrome.storage.local.get("armedChats");
-  const entries = Object.entries(data.armedChats || {}).sort(
+  const entries = Object.entries(data.armedChats || {})
+    .filter(([path]) => { const p = path.startsWith("/") ? path : path.slice(path.indexOf("/")); return p.split("/").filter(Boolean).length >= 2; })
+    .sort(
     (a, b) => (b[1].armedAt || 0) - (a[1].armedAt || 0),
   );
   armedListEl.innerHTML = "";
@@ -292,8 +294,7 @@ async function renderArmedChats() {
     title.title = path;
     const sub = document.createElement("div");
     sub.className = "armed-sub";
-    let host = rec.serverUrl || "";
-    try { host = new URL(rec.serverUrl).host; } catch {}
+    const host = path.startsWith("/") ? "gemini.google.com" : path.split("/")[0];
     const when = rec.armedAt
       ? new Date(rec.armedAt).toLocaleDateString("id-ID", { day: "numeric", month: "short" })
       : "";
@@ -304,7 +305,7 @@ async function renderArmedChats() {
     openBtn.textContent = "↗";
     openBtn.title = "Buka chat";
     openBtn.addEventListener("click", () =>
-      chrome.tabs.create({ url: "https://gemini.google.com" + path }),
+      chrome.tabs.create({ url: path.startsWith("/") ? "https://gemini.google.com" + path : path.slice(path.indexOf("/")).startsWith("/t/") ? "https://" + path.split("/")[0] + "/" : "https://" + path }),
     );
     const delBtn = document.createElement("button");
     delBtn.className = "icon-btn";

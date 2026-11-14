@@ -2,13 +2,14 @@
 
 Browser extension that connects web AI chats to your own machine through
 the [Toolsmith MCP server](https://github.com/arosyihuddin/toolsmith-mcp).
-First target: **Google Gemini** (`gemini.google.com`).
+Supported chats: **Google Gemini** (`gemini.google.com`), **Meta AI** (`meta.ai`), and **Ptero** (`ptero.pro`).
 
-Gemini's web chat has no tool calling of its own. This extension bridges
+These web chats have no tool calling of their own. This extension bridges
 the gap with the pattern chat UIs leave open - the DOM:
 
-1. It injects a **Toolsmith** toggle into Gemini's input menu, next to
-   the **+** button.
+1. It injects a **Toolsmith** toggle next to the chat's composer
+   (in Gemini's input menu after the **+** button; on Meta AI, in the
+   composer's toolbar row next to the **+** button).
 2. Switching it on fetches the live tool list from your MCP server and
    sends a setup message (a visible "system prompt") that teaches the
    model the usual LLM tool-calling shape: reply with a fenced
@@ -80,9 +81,9 @@ then click the **reload** icon on the extension's card in
 
 ## Use
 
-1. Open a Gemini chat and click the **Toolsmith** toggle in the input
-   menu (after the **+** button below the text field). It turns **On**
-   and the setup message is sent; Gemini replies "Siap.".
+1. Open a Gemini or Meta AI chat and click the **Toolsmith** toggle
+   next to the composer. It turns **On** and the setup message is
+   sent; the model replies "Siap.".
 2. Ask for something that needs your machine, e.g. "cek sisa disk dan
    versi kernel PC saya". Watch it call the tools.
 3. Click the toggle again to turn Toolsmith off for that chat.
@@ -112,7 +113,8 @@ type yourself resets the budget.
 - `background.js` - minimal MCP client (Streamable HTTP, session
   handling, JSON or SSE responses) plus the OAuth connect mechanism.
   All network traffic and credentials live here, never in the page.
-- `content.js` - Gemini adapter: toggle injection, setup prompt,
+- `content.js` - per-site adapters (Gemini, Meta AI, Ptero) over shared
+  machinery: toggle injection, setup prompt,
   response watching, tool-call parsing, permissions, approval card,
   result injection, per-message mode reminder.
 - `popup.*` / `options.*` - connection status, server settings, tool
@@ -122,6 +124,12 @@ type yourself resets the budget.
 
 - Gemini's DOM changes from time to time; the selectors in
   `content.js` have fallbacks but may need adjusting after a redesign.
+- Meta AI's composer is a single-line `<input>`, so injected text
+  (the setup prompt, tool results) arrives flattened to one line
+  there; the model still reads it fine.
+- Ptero is a single-page app whose URL never changes, so armed
+  chats there are keyed by the conversation's generated title;
+  two chats with the same title would share one arm record.
 - One tool call per model reply.
 - The setup message and the per-message reminders are visible in the
   chat (there is no hidden system-prompt channel in a consumer chat

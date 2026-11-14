@@ -139,3 +139,48 @@
 .toolsmith-approval-actions .toolsmith-approve:hover {
   background: #4f5bc4;
 }
+
+/* Meta AI placement: match Meta's own composer pills (the mode
+   pill beside it) - page font, larger text, soft translucent
+   surface with a fine border, in both color schemes. */
+.toolsmith-site-metaai {
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  height: 36px;
+  padding: 0 14px;
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.08);
+  color: #1c1e21;
+}
+
+.toolsmith-site-metaai:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+@media (prefers-color-scheme: dark) {
+  .toolsmith-site-metaai {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #f0f2f5;
+  }
+  .toolsmith-site-metaai:hover {
+    background: rgba(255, 255, 255, 0.13);
+  }
+}
+
+/* Ptero: the toggle is docked absolutely inside the (relative)
+   input area, just left of the voice-mode button. Measured
+   cluster offsets from the area's right edge: send 10-48,
+   mic 53-89, voice 105-141 - so the toggle starts at 145.
+   Bottom 12 centers its 32px height on the 36px buttons,
+   which sit 10px off the bottom. Width must beat any host
+   button sizing, hence the !important. */
+.toolsmith-ptero-docked {
+  position: absolute;
+  right: 145px;
+  bottom: 12px;
+  z-index: 3;
+  margin-left: 0;
+  width: auto !important;
+}
